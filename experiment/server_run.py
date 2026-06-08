@@ -44,7 +44,7 @@ if __name__ == "__main__":
     else:
         raise ValueError(f"Unknown mode: {server_args['mode']}")
     log_dir = os.path.join(
-        "log_",
+        "logs",
         root_name,
         server_args["version"],
         server_args["model"],

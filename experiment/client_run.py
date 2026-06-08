@@ -44,7 +44,7 @@ def client_worker(rank: int, args: dict, lag_ratios: list, barrier):
         raise ValueError(f"Unknown mode: {args['mode']}")
 
     log_dir = os.path.join(
-        "log_",
+        "logs",
         root_name,
         args["version"],
         args["model"],
