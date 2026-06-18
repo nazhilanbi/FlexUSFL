@@ -14,6 +14,7 @@ from transformers.models.qwen3.modeling_qwen3 import (
     Qwen3RotaryEmbedding,
     Qwen3RMSNorm,
 )
+from usfl.llm.qwen3_utils import extract_qwen3_hidden_states
 from usfl.llm.split_config import SplitModelConfig
 
 """
@@ -129,7 +130,7 @@ class Qwen3ClientHead(PreTrainedModel):
                 output_attentions=False,
             )
 
-            hidden_states = layer_outputs[0]
+            hidden_states = extract_qwen3_hidden_states(layer_outputs)
         return (
             hidden_states,
             causal_mask,
@@ -197,7 +198,7 @@ class Qwen3ClientTail(PreTrainedModel):
                 output_attentions=False,
             )
 
-            hidden_states = layer_outputs[0]
+            hidden_states = extract_qwen3_hidden_states(layer_outputs)
         hidden_states = self.norm(hidden_states)
         logits = self.lm_head(hidden_states)
         logits = logits.float()

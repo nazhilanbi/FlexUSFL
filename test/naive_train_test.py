@@ -1,5 +1,5 @@
 import os
-from peft import get_peft_model, LoraConfig, TaskType
+from peft import get_peft_model
 import torch
 import torch.nn as nn
 import torch.optim as optim
@@ -20,15 +20,8 @@ tokenizer.pad_token = tokenizer.eos_token
 device = 'cuda:0'
 print(f'cuda memory allocated: {torch.cuda.memory_allocated(device)}')
 head, tail = load_utils.load_llama_client(model, SplitModelConfig(3, -1, 3))
-lora_config = LoraConfig(
-    task_type=TaskType.CAUSAL_LM,
-    r=8,
-    lora_alpha=32,
-    lora_dropout=0.1,
-    target_modules=["q_proj", "k_proj", "v_proj"],
-)
-head = get_peft_model(head, lora_config)
-tail = get_peft_model(tail, lora_config)
+head = get_peft_model(head, load_utils._build_split_lora_config())
+tail = get_peft_model(tail, load_utils._build_split_lora_config())
 head.to(device)
 tail.to(device)
 print(f'after model loaded, cuda memory allocated: {torch.cuda.memory_allocated(device)/1024**3:.2f} GB')

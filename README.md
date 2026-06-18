@@ -29,6 +29,7 @@ FlexUSFL/
 ├── vis/
 │   ├── dcp.py               # Merge server/client profiling JSON files
 │   └── vis.py               # Draw timeline visualizations
+├── requirements.txt         # Pinned artifact dependencies
 ├── setup.py
 ├── README.md
 └── README_CN.md
@@ -54,23 +55,39 @@ If your GPU layout is different, update:
 Using conda is recommended:
 
 ```bash
-conda create -n flexusfl python=3.10 -y
+conda create -n flexusfl python=3.10.18 -y
 conda activate flexusfl
 ```
 
-Install PyTorch according to your CUDA version, then install the project dependencies:
+Install the pinned artifact dependencies and the local package:
 
 ```bash
-pip install torch transformers datasets peft bitsandbytes accelerate
-pip install numpy pandas matplotlib nltk sentencepiece protobuf
-pip install -e .
+python -m pip install -r requirements.txt
+python -m pip install -e .
 ```
 
 `setup.py` only installs the local `usfl` package. It does not automatically install all third-party dependencies.
 
+The reference environment was import-checked with:
+
+| Component | Version |
+| --- | --- |
+| Python | `3.10.18` |
+| PyTorch | `2.6.0+cu126` |
+| CUDA runtime bundled with PyTorch | `12.6` |
+| Non-quantized model dtype | `float32` |
+| Transformers | `4.51.1` |
+| Datasets | `3.2.0` |
+| PEFT | `0.14.0` |
+| Accelerate | `1.10.1` |
+
+The main artifact scripts use LoRA but not QLoRA. Therefore, `bitsandbytes` was not installed in the reference environment and is not included in `requirements.txt`. The `-Q4` and `-Q8` options require a separately installed `bitsandbytes` build compatible with the local CUDA and PyTorch versions.
+
+LoRA is applied to the split head, server, and tail with PEFT's generic `PeftModel`. These components intentionally do not use `TaskType.CAUSAL_LM`, because an individual split component is not a complete generation model and does not implement generation methods.
+
 ### 2.3 Model and Dataset Paths
 
-The code loads models from `/share/models` by default:
+The code first looks for models under `/share/models`:
 
 ```text
 /share/models/<model_name>
@@ -84,6 +101,29 @@ For example:
 /share/models/qwen/qwen3-1.7b
 ```
 
+Models used by the current evaluation scripts:
+
+| `-M` value | Hugging Face model card | Expected local directory |
+| --- | --- | --- |
+| `qwen/qwen3-0.6b` | [Qwen/Qwen3-0.6B](https://huggingface.co/Qwen/Qwen3-0.6B) | `/share/models/qwen/qwen3-0.6b` |
+| `meta-llama/llama3.2-1b` | [meta-llama/Llama-3.2-1B](https://huggingface.co/meta-llama/Llama-3.2-1B) | `/share/models/meta-llama/llama3.2-1b` |
+| `qwen/qwen3-1.7b` | [Qwen/Qwen3-1.7B](https://huggingface.co/Qwen/Qwen3-1.7B) | `/share/models/qwen/qwen3-1.7b` |
+
+The models can be downloaded with the Hugging Face CLI:
+
+```bash
+hf download Qwen/Qwen3-0.6B \
+    --local-dir /share/models/qwen/qwen3-0.6b
+
+# Llama 3.2 is gated. Accept its license on Hugging Face and run
+# `hf auth login` before downloading it.
+hf download meta-llama/Llama-3.2-1B \
+    --local-dir /share/models/meta-llama/llama3.2-1b
+
+hf download Qwen/Qwen3-1.7B \
+    --local-dir /share/models/qwen/qwen3-1.7b
+```
+
 The dataset cache directory is configured in `usfl/env.py` as:
 
 ```text
@@ -92,9 +132,19 @@ The dataset cache directory is configured in `usfl/env.py` as:
 
 The current batch scripts mainly use:
 
-- `gsm8k`
-- `dialogsum`
-- `e2e`
+| CLI name | Hugging Face dataset |
+| --- | --- |
+| `gsm8k` | [openai/gsm8k](https://huggingface.co/datasets/openai/gsm8k), configuration `main` |
+| `dialogsum` | [knkarthick/dialogsum](https://huggingface.co/datasets/knkarthick/dialogsum) |
+| `e2e` | [GEM/e2e_nlg](https://huggingface.co/datasets/GEM/e2e_nlg) |
+
+For the three models and datasets above, FlexUSFL uses local-first resolution:
+
+- If the expected directory exists under `/share/models` or `/share/datasets`, it is loaded directly for offline artifact evaluation.
+- If the directory does not exist, the official namespaced Hugging Face ID in the tables above is used.
+- The Hub version of E2E uses `meaning_representation` and `target`; the formatter accepts both those fields and the local artifact's `context` and `completion` fields.
+
+For a fully frozen artifact, record a Hugging Face revision or commit hash when downloading each model and dataset, then use the same revision for future downloads.
 
 ## 3. Quick Evaluation
 

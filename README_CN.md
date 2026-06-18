@@ -29,6 +29,7 @@ FlexUSFL/
 ├── vis/
 │   ├── dcp.py               # 合并 server/client profiling JSON
 │   └── vis.py               # 绘制 timeline 可视化图
+├── requirements.txt         # Artifact 固定版本依赖
 ├── setup.py
 ├── README.md
 └── README_CN.md
@@ -54,23 +55,39 @@ FlexUSFL/
 推荐使用 conda：
 
 ```bash
-conda create -n flexusfl python=3.10 -y
+conda create -n flexusfl python=3.10.18 -y
 conda activate flexusfl
 ```
 
-安装 PyTorch 时请根据本机 CUDA 版本选择合适命令。之后安装项目依赖：
+安装固定版本的 artifact 依赖和本地包：
 
 ```bash
-pip install torch transformers datasets peft bitsandbytes accelerate
-pip install numpy pandas matplotlib nltk sentencepiece protobuf
-pip install -e .
+python -m pip install -r requirements.txt
+python -m pip install -e .
 ```
 
 `setup.py` 只负责安装本地 `usfl` 包，不会自动安装完整第三方依赖。
 
+参考环境已经通过依赖导入检查：
+
+| 组件 | 版本 |
+| --- | --- |
+| Python | `3.10.18` |
+| PyTorch | `2.6.0+cu126` |
+| PyTorch 内置 CUDA runtime | `12.6` |
+| 非量化模型 dtype | `float32` |
+| Transformers | `4.51.1` |
+| Datasets | `3.2.0` |
+| PEFT | `0.14.0` |
+| Accelerate | `1.10.1` |
+
+当前主要 artifact 脚本使用 LoRA，但不使用 QLoRA。因此参考环境没有安装 `bitsandbytes`，它也未写入 `requirements.txt`。如需使用 `-Q4` 或 `-Q8`，需要另行安装与本机 CUDA 和 PyTorch 版本兼容的 `bitsandbytes`。
+
+Head、Server 和 Tail 的 LoRA 使用 PEFT 通用 `PeftModel`。这些切分组件不会设置 `TaskType.CAUSAL_LM`，因为单个切分组件并不是完整的生成模型，也没有实现生成接口。
+
 ### 2.3 模型和数据集路径
 
-代码默认从 `/share/models` 加载模型：
+代码会优先从 `/share/models` 查找模型：
 
 ```text
 /share/models/<model_name>
@@ -84,6 +101,29 @@ pip install -e .
 /share/models/qwen/qwen3-1.7b
 ```
 
+当前评估脚本使用的模型如下：
+
+| `-M` 参数 | Hugging Face 模型卡 | 本地目录 |
+| --- | --- | --- |
+| `qwen/qwen3-0.6b` | [Qwen/Qwen3-0.6B](https://huggingface.co/Qwen/Qwen3-0.6B) | `/share/models/qwen/qwen3-0.6b` |
+| `meta-llama/llama3.2-1b` | [meta-llama/Llama-3.2-1B](https://huggingface.co/meta-llama/Llama-3.2-1B) | `/share/models/meta-llama/llama3.2-1b` |
+| `qwen/qwen3-1.7b` | [Qwen/Qwen3-1.7B](https://huggingface.co/Qwen/Qwen3-1.7B) | `/share/models/qwen/qwen3-1.7b` |
+
+可以使用 Hugging Face CLI 下载：
+
+```bash
+hf download Qwen/Qwen3-0.6B \
+    --local-dir /share/models/qwen/qwen3-0.6b
+
+# Llama 3.2 是 gated 模型，需要先在 Hugging Face 接受许可证，
+# 然后执行 `hf auth login`。
+hf download meta-llama/Llama-3.2-1B \
+    --local-dir /share/models/meta-llama/llama3.2-1b
+
+hf download Qwen/Qwen3-1.7B \
+    --local-dir /share/models/qwen/qwen3-1.7b
+```
+
 数据集缓存目录在 `usfl/env.py` 中配置为：
 
 ```text
@@ -92,9 +132,19 @@ pip install -e .
 
 当前批量脚本主要使用：
 
-- `gsm8k`
-- `dialogsum`
-- `e2e`
+| 命令行名称 | Hugging Face 数据集 |
+| --- | --- |
+| `gsm8k` | [openai/gsm8k](https://huggingface.co/datasets/openai/gsm8k)，配置为 `main` |
+| `dialogsum` | [knkarthick/dialogsum](https://huggingface.co/datasets/knkarthick/dialogsum) |
+| `e2e` | [GEM/e2e_nlg](https://huggingface.co/datasets/GEM/e2e_nlg) |
+
+对于上表中的三个模型和三个数据集，FlexUSFL 采用本地优先策略：
+
+- 如果 `/share/models` 或 `/share/datasets` 下存在预期目录，则直接加载，支持离线 artifact 评估。
+- 如果本地目录不存在，则自动使用表中的官方 Hugging Face namespaced ID。
+- Hub 版本的 E2E 使用 `meaning_representation` 和 `target` 字段；格式化代码同时兼容这些字段和本地 artifact 的 `context`、`completion` 字段。
+
+如果希望 artifact 完全冻结，下载每个模型和数据集时还应记录 Hugging Face revision 或 commit hash，并在之后下载时使用同一个 revision。
 
 ## 3. 快速评估
 

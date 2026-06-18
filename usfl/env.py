@@ -6,6 +6,7 @@ import torch
 project_root = '/home/lzh/projects/FlexUSFL'
 nltk_path = '~/nltk_data'  # 用于计算meteor指标数据集
 dataset_cache_dir = '/share/datasets/'
+model_root_dir = '/share/models'
 model_path = f'{project_root}/data/models'
 model_save_path = f'{project_root}/data/ft_models'
 naive_train_model_save_path = f'{model_save_path}/naive'

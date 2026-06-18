@@ -9,6 +9,20 @@ from datasets import load_dataset, Dataset
 from usfl.utils.dataset.base import FedDataset
 from usfl import env as env_config
 from usfl.utils.dataset.exp import register_dataset
+from usfl.utils.hub_utils import get_dataset_config, resolve_dataset_source
+
+
+def _load_artifact_dataset(dataset_name: str):
+    """Load an artifact dataset locally when available, otherwise from the Hub."""
+    dataset_source = resolve_dataset_source(
+        dataset_name,
+        local_root=env_config.dataset_cache_dir,
+    )
+    dataset_config = get_dataset_config(dataset_name)
+    load_kwargs = {"cache_dir": env_config.dataset_cache_dir}
+    if dataset_config is not None:
+        return load_dataset(dataset_source, dataset_config, **load_kwargs)
+    return load_dataset(dataset_source, **load_kwargs)
 
 
 @register_dataset("piqa")
@@ -355,7 +369,7 @@ class GSM8KFedDataset(FedDataset):
         super().__init__(
             tokenizer,
             client_ids,
-            load_dataset(env_config.dataset_cache_dir + "gsm8k", "main"),  # 加载原始数据集
+            _load_artifact_dataset("gsm8k"),
             types=["train", "test"],
             shrink_frac=shrink_frac,
             **kwargs
@@ -417,7 +431,7 @@ class DialogSumFedDataset(FedDataset):
         super().__init__(
             tokenizer,
             client_ids,
-            load_dataset(env_config.dataset_cache_dir + "dialogsum"),
+            _load_artifact_dataset("dialogsum"),
             ["train", "test", "validation"],
             shrink_frac,
             **kwargs
@@ -716,7 +730,7 @@ class E2EDataset(FedDataset):
         super().__init__(
             tokenizer,
             client_ids,
-            dataset=load_dataset(env_config.dataset_cache_dir + "e2e"),
+            dataset=_load_artifact_dataset("e2e"),
             types=["train", "validation"],
             shrink_frac=shrink_frac,
             **kwargs
@@ -725,8 +739,19 @@ class E2EDataset(FedDataset):
         self.a_temp = "### Completion:\n"
 
     def _format(self, example):
-        q = self.q_temp + example["context"]
-        a = self.a_temp + example["completion"]
+        context = example.get("context", example.get("meaning_representation"))
+        completion = example.get(
+            "completion",
+            example.get("human_reference", example.get("target")),
+        )
+        if context is None or completion is None:
+            raise KeyError(
+                "E2E samples must contain context/completion, "
+                "meaning_representation/human_reference, or "
+                "meaning_representation/target fields"
+            )
+        q = self.q_temp + context
+        a = self.a_temp + completion
         return {"q": q, "a": a, "input": q + "\n" + a}
 
     def _col_fun(self, batch, max_seq_len=-1, extra_info=True):

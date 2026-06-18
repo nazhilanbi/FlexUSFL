@@ -19,6 +19,7 @@ data/
 *.tsv
 *.json
 *.txt
+!requirements.txt
 *.jsonl
 *.pickle
 *.pkl
